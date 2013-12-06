@@ -1,7 +1,7 @@
 function createXML() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var dataSheet = ss.getSheets()[0];
-  var dataRange = dataSheet.getRange(2, 1, dataSheet.getMaxRows() - 1, 4);
+  var dataRange = dataSheet.getRange(2, 1, dataSheet.getMaxRows(), 23);
 
   var templateSheet = ss.getSheets()[1];
   var xmlTemplate = templateSheet.getRange("A1").getValue();
@@ -26,14 +26,33 @@ function createXML() {
     // Get a row object
     var rowData = objects[i];
 
+    // Convert keywords data from "x","y","z" into array
+    //   - split string into array on comma
+    //   - iterate through array and create xml structured data chunk.
+    var stringToSplit = rowData.keyword || '';
+    var keywordArray = stringToSplit.split(',');
+    var xmlKeyword = '';
+    for (var j in keywordArray) {
+      if (keywordArray[j] != '') {
+        xmlKeyword += '<gmd:keyword><gco:CharacterString>' + keywordArray[j] + '</gco:CharacterString></gmd:keyword>';
+      }
+    }
+    
+    // Convert date to ISO 860
+    var formattedDate = Utilities.formatDate(rowData.modified, "GMT", "yyyy-MM-dd");
+    Logger.log(formattedDate);
+    
     // Generate a xml file to template specifications.
+    // Run three times through template, first inserting formatted date, then keywords and then everything else.
     // Given a template string, replace markers (for instance ${"First Name"}) with
     // the corresponding value in a row object (for instance rowData.firstName).
-    var xmlText = fillInTemplateFromObject(xmlTemplate, rowData);
+    var xmlTemplateWithFormattedDate = fillInDateFromObject(xmlTemplate, formattedDate);
+    var xmlTemplateWithKeywords = fillInKeywordsFromArray(xmlTemplateWithFormattedDate, xmlKeyword);
+    var xmlText = fillInTemplateFromObject(xmlTemplateWithKeywords, rowData);
     
     // Creates normalized file name by replacing " "
     // with "-", and uses new file name to create file.
-    var fileName = rowData.firstName;
+    var fileName = rowData.title;
     var normName = fileName.replace(/\s+/g, '-');
     var file = DocsList.createFile(normName+'.xml', xmlText, 'application/xml');
     
@@ -44,7 +63,7 @@ function createXML() {
 }
 
 
-// Replaces markers in a template string with values define in a JavaScript data object.
+// Replaces markers in a template string with values defined in a JavaScript data object.
 // Arguments:
 //   - template: string containing markers, for instance ${"Column name"}
 //   - data: JavaScript object with values to that will replace markers. For instance
@@ -62,6 +81,38 @@ function fillInTemplateFromObject(template, data) {
     // normalizeHeader ignores ${"} so we can call it directly here.
     var variableData = data[normalizeHeader(templateVars[i])];
     email = email.replace(templateVars[i], variableData || "");
+  }
+
+  return email;
+}
+
+
+// Replaces keyword marker in a template string with values defined in a JavaScript data object.
+function fillInKeywordsFromArray(template, data) {
+  var email = template;
+  // Search for all the variables to be replaced, for instance ${"Column name"}
+  var templateVars = template.match(/\$\{\{\"[^\"]+\"\}\}/g);
+
+  // Replace variables from the template with the actual values from the data object.
+  // If no value is available, replace with the empty string.
+  for (var i = 0; i < templateVars.length; ++i) {
+    email = email.replace(templateVars[i], data || "");
+  }
+
+  return email;
+}
+
+
+// Replaces modified (date) marker in a template string with values defined in a JavaScript data object.
+function fillInDateFromObject(template, data) {
+  var email = template;
+  // Search for all the variables to be replaced, for instance ${"Column name"}
+  var templateVars = template.match(/\$\{\{\{\"[^\"]+\"\}\}\}/g);
+
+  // Replace variables from the template with the actual values from the data object.
+  // If no value is available, replace with the empty string.
+  for (var i = 0; i < templateVars.length; ++i) {
+    email = email.replace(templateVars[i], data || "");
   }
 
   return email;
